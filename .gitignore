@@ -107,4 +107,8 @@ venv.bak/
 # mkdocs documentation
 /site
 
-
+#cluster files
+*.sub
+*.sh
+Results*
+out/**
