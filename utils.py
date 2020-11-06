@@ -167,14 +167,13 @@ def witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level):
     mu_Q = torch.mean(witness[n2:])
 
     # print(mu_P - mu_Q)
-
-    Sigma_P = 1 / n2 * (witness[:n2]).mm((witness[:n2])) - mu_P**2
-    Sigma_Q = 1 / m2 * (witness[n2:]).mm((witness[n2:])) - mu_Q**2
+    Sigma_P = 1 / n2 * (witness[:n2]).dot((witness[:n2])) - mu_P**2
+    Sigma_Q = 1 / m2 * (witness[n2:]).dot((witness[n2:])) - mu_Q**2
     c = n2 / (n2 + m2)
 
     Sigma = Sigma_P / c + Sigma_Q / (1 - c)
     # print('testing SNR = ', (mu_P - mu_Q) / np.sqrt(Sigma))
-    snr = (mu_P - mu_Q) / np.sqrt(Sigma)
+    snr = np.sqrt(n2+m2) * (mu_P - mu_Q) / torch.sqrt(Sigma)
     threshold = norm.ppf(q=1-level)
     if snr > threshold:
         # reject
