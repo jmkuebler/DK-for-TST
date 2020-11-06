@@ -3,6 +3,7 @@ import torch
 import torch.utils.data
 import freqopttest.data as data
 import freqopttest.tst as tst
+from scipy.stats import norm
 
 is_cuda = True
 
@@ -112,6 +113,77 @@ def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, epsilon=10 ** (-10), is_smooth=
         Kxy = torch.exp(-Dxy / sigma0)
     return h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U)
 
+
+def kernelmatrix(Fea, len_s, Fea_org, Fea_tr, len_s_tr, Fea_org_tr, sigma, sigma0=0.1, epsilon=10 ** (-10), is_smooth=True):
+    """compute value of deep-kernel MMD and std of deep-kernel MMD using merged data."""
+    # test data
+    X2 = Fea[0:len_s, :] # fetch the sample 1 (features of deep networks)
+    Y2 = Fea[len_s:, :] # fetch the sample 2 (features of deep networks)
+    X2_org = Fea_org[0:len_s, :] # fetch the original sample 1
+    Y2_org = Fea_org[len_s:, :] # fetch the original sample 2
+    # training data
+    X1 = Fea_tr[0:len_s_tr, :] # fetch the sample 1 (features of deep networks)
+    Y1 = Fea[len_s_tr:, :] # fetch the sample 2 (features of deep networks)
+    X1_org = Fea_org_tr[0:len_s_tr, :] # fetch the original sample 1
+    Y1_org = Fea_org_tr[len_s_tr:, :] # fetch the original sample 2
+    L = 1 # generalized Gaussian (if L>1)
+    Dx1x2 = Pdist2(X1, X2)
+    Dy1y2 = Pdist2(Y1, Y2)
+    Dx1y2 = Pdist2(X1, Y2)
+    Dy1x2 = Pdist2(Y1, X2)
+
+    Dx1x2_org = Pdist2(X1_org, X2_org)
+    Dy1y2_org = Pdist2(Y1_org, Y2_org)
+    Dx1y2_org = Pdist2(X1_org, Y2_org)
+    Dy1x2_org = Pdist2(Y1_org, X2_org)
+
+    if is_smooth:
+        Kx1x2 = (1-epsilon) * torch.exp(-(Dx1x2 / sigma0) - (Dx1x2_org / sigma))**L + epsilon * torch.exp(-Dx1x2_org / sigma)
+        Kx1y2 = (1-epsilon) * torch.exp(-(Dx1y2 / sigma0) - (Dx1y2_org / sigma))**L + epsilon * torch.exp(-Dx1y2_org / sigma)
+        Ky1x2 = (1-epsilon) * torch.exp(-(Dy1x2 / sigma0) - (Dy1x2_org / sigma))**L + epsilon * torch.exp(-Dy1x2_org / sigma)
+        Ky1y2 = (1-epsilon) * torch.exp(-(Dy1y2 / sigma0) - (Dy1y2_org / sigma))**L + epsilon * torch.exp(-Dy1y2_org / sigma)
+    else:
+        Kx1x2 = torch.exp(-(Dx1x2 / sigma0))
+        Kx1y2 = torch.exp(-(Dx1y2 / sigma0))
+        Ky1x2 = torch.exp(-(Dy1x2 / sigma0))
+        Ky1y2 = torch.exp(-(Dy1y2 / sigma0))
+    return Kx1x2, Kx1y2, Ky1x2, Ky1y2
+
+
+def witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level):
+    n1,n2 = Kx1x2.shape[0], Kx1x2.shape[1]
+    m1,m2 = Ky1y2.shape[0], Ky1y2.shape[1]
+    K = torch.tensor(np.block([[np.array(Kx1x2), np.array(Kx1y2)], [np.array(Ky1x2), np.array(Ky1y2)]]))
+
+    alpha = np.array([1 / n1] * n1 + [-1 / m1] * m1)
+    # use coefficients for witness
+    scale = torch.diag(torch.tensor(alpha))
+    # still assuming d = 1
+    K = torch.matmul(scale.double(), K.double())
+    witness = torch.sum(K, dim=0)
+    # make it work with the general d case
+
+    mu_P = torch.mean(witness[:n2])
+    mu_Q = torch.mean(witness[n2:])
+
+    # print(mu_P - mu_Q)
+
+    Sigma_P = 1 / n2 * (witness[:n2]).mm((witness[:n2])) - mu_P**2
+    Sigma_Q = 1 / m2 * (witness[n2:]).mm((witness[n2:])) - mu_Q**2
+    c = n2 / (n2 + m2)
+
+    Sigma = Sigma_P / c + Sigma_Q / (1 - c)
+    # print('testing SNR = ', (mu_P - mu_Q) / np.sqrt(Sigma))
+    snr = (mu_P - mu_Q) / np.sqrt(Sigma)
+    threshold = norm.ppf(q=1-level)
+    if snr > threshold:
+        # reject
+        h = 1
+    else:
+        h = 0
+    return h, snr
+
+
 def MMDu_linear_kernel(Fea, len_s, is_var_computed=True, use_1sample_U=True):
     """compute value of (deep) lineaer-kernel MMD and std of (deep) lineaer-kernel MMD using merged data."""
     try:
@@ -192,6 +264,7 @@ def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, de
         #        print(np.int(np.ceil(N_per*alpha)))
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
+
 
 def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype, epsilon=10 ** (-10),is_smooth=True):
     """run two-sample test (TST) using deep kernel kernel."""

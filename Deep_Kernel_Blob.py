@@ -14,7 +14,7 @@ can be found in https://www.anaconda.com/distribution/#download-section .
 import numpy as np
 import torch
 from sklearn.utils import check_random_state
-from utils import MatConvert, MMDu, TST_MMD_u
+from utils import MatConvert, MMDu, TST_MMD_u, kernelmatrix, witness
 
 def sample_blobs(n, rows=3, cols=3, sep=1, rs=None):
     """Generate Blob-S for testing type-I error."""
@@ -115,7 +115,7 @@ for n in n_list:
     torch.cuda.manual_seed(1102)
     N1 = 9 * n
     N2 = 9 * n
-    Results = np.zeros([1, K])
+    Results = np.zeros([2, K])
     Opt_ep = np.zeros([1, K])
     J_star_u = np.zeros([K, N_epoch])
     ep_OPT = np.zeros([K])
@@ -183,28 +183,40 @@ for n in n_list:
         H_u = np.zeros(N)
         T_u = np.zeros(N)
         M_u = np.zeros(N)
+        # lists for witness based
+        H_wit = np.zeros(N)
+        snr_wit = np.zeros(N)
         np.random.seed(1102)
         count_u = 0
         for k in range(N):
             # Generate Blob-D
             np.random.seed(seed=11 * k + 10 + n)
-            s1,s2 = sample_blobs_Q(N1, sigma_mx_2)
+            s1test,s2test = sample_blobs_Q(N1, sigma_mx_2)
             # REPLACE above line with
-            # s1,s2 = sample_blobs(N1)
+            # s1test,s2test = sample_blobs(N1)
             # for validating type-I error (s1 ans s2 are from the same distribution)
-            S = np.concatenate((s1, s2), axis=0)
-            S = MatConvert(S, device, dtype)
+            Stest = np.concatenate((s1test, s2test), axis=0)
+            Stest = MatConvert(Stest, device, dtype)
             # Run two sample test (deep kernel) on generated data
-            h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, alpha, device, dtype, ep)
+            h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(Stest), N_per, N1, Stest, sigma, sigma0_u, alpha, device, dtype, ep)
             # Gather results
             count_u = count_u + h_u
             print("MMD-D:", count_u)
             H_u[k] = h_u
             T_u[k] = threshold_u
             M_u[k] = mmd_value_u
+            # run the witness based two-sample test
+            Kx1x2, Kx1y2, Ky1x2, Ky1y2 = kernelmatrix(Fea=model_u(Stest), len_s=N1, Fea_org=Stest, Fea_tr=model_u(S),
+                                                      len_s_tr=N1, Fea_org_tr=S, sigma=sigma, sigma0=sigma0_u,
+                                                      epsilon=ep, is_smooth=True)
+            H_wit[k], snr_wit[k] = witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level=alpha)
         # Print test power of MMD-D
         print("n =",str(n),"--- Test Power of MMD-D: ", H_u.sum()/N_f)
         Results[0, kk] = H_u.sum() / N_f
-        print("n =",str(n),"--- Test Power of MMD-D (K times): ",Results[0])
+        # print("n =",str(n),"--- Test Power of MMD-D (K times): ",Results[0])
         print("n =",str(n),"--- Average Test Power of MMD-D: ",Results[0].sum()/(kk+1))
+
+        print("n =",str(n),"--- Test Power of witness: ", H_wit.sum()/N_f)
+        Results[1, kk] = H_wit.sum() / N_f
+        print("n =",str(n),"--- Average Test Power of MMD-D: ",Results[1].sum()/(kk+1))
     np.save('./Results_Blob_'+str(n)+'_H1_MMD-D',Results)
