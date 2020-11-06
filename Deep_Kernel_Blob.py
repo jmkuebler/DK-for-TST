@@ -15,6 +15,8 @@ import numpy as np
 import torch
 from sklearn.utils import check_random_state
 from utils import MatConvert, MMDu, TST_MMD_u, kernelmatrix, witness
+from pathlib import Path
+
 
 def sample_blobs(n, rows=3, cols=3, sep=1, rs=None):
     """Generate Blob-S for testing type-I error."""
@@ -96,7 +98,7 @@ learning_rate = 0.0005 # learning rate for MMD-D on Blob
 N_epoch = 1 # number of training epochs
 # K = 10 # number of trails
 K = 1
-N = 100 # # number of test sets
+N = 1 # # number of test sets
 N_f = 100.0 # number of test sets (float)
 # Generate variance and co-variance matrix of Q
 sigma_mx_2_standard = np.array([[0.03, 0], [0, 0.03]])
@@ -224,4 +226,11 @@ for n in n_list:
         Results[1, kk] = H_wit.sum() / N_f
         print("n =",str(n),"--- Average Test Power of witness: ",Results[1].sum()/(kk+1))
         # print(snr_wit)
-    np.save('./Results_Blob_'+str(n)+'_H1_MMD-D',Results)
+    #: Default directory containing the results
+    DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.joinpath("data")
+    data_dir = Path(DEFAULT_DATA_DIR)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    filename = "results_Blobs{}".format(args.exp_number)
+    path = data_dir.joinpath(filename)
+    # np.save('./Results_Blob_'+str(n)+'_H1_MMD-D',Results)
+    np.save(path,Results)
