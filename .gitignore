@@ -112,3 +112,4 @@ venv.bak/
 *.sh
 Results*
 out/**
+data/**
