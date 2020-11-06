@@ -82,7 +82,7 @@ torch.manual_seed(1102)
 torch.cuda.manual_seed(1102)
 torch.backends.cudnn.deterministic = True
 # with GPU this has to be True else False
-is_cuda = True
+is_cuda = False
 # Setup for all experiments
 dtype = torch.float
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -227,10 +227,10 @@ for n in n_list:
         print("n =",str(n),"--- Average Test Power of witness: ",Results[1].sum()/(kk+1))
         # print(snr_wit)
     #: Default directory containing the results
-    DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.joinpath("data")
+    DEFAULT_DATA_DIR = Path(__file__).resolve().parent.joinpath("data")
     data_dir = Path(DEFAULT_DATA_DIR)
     data_dir.mkdir(parents=True, exist_ok=True)
-    filename = "results_Blobs{}".format(args.exp_number)
+    filename = "results_Blobs{}".format(n)
     path = data_dir.joinpath(filename)
     # np.save('./Results_Blob_'+str(n)+'_H1_MMD-D',Results)
     np.save(path,Results)
