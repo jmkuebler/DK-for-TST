@@ -200,6 +200,7 @@ for kk in pbar:
     # Print test power of MMD-D
     # print("Test Power of MMD-D: ", H_u.sum() / N_f)
     Results[0, kk] = H_u.sum() / N_f
+    Results[1, kk] = H_wit.sum() / N_f
     # Results[1, kk] = H_wit.sum() / N_f
     # print("Test Power of MMD-D (K times): ", Results[0])
     # print("Average Test Power of MMD-D: ", Results[0].sum() / (kk + 1))
