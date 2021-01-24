@@ -204,4 +204,4 @@ for kk in pbar:
     # Results[1, kk] = H_wit.sum() / N_f
     # print("Test Power of MMD-D (K times): ", Results[0])
     # print("Average Test Power of MMD-D: ", Results[0].sum() / (kk + 1))
-np.save('./Results_HIGGS_n' + str(n) + '_H1_MMD-D', Results)
+np.save('./data/Results_HIGGS_n' + str(n) + '_H1_MMD-D', Results)
