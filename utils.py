@@ -123,7 +123,7 @@ def kernelmatrix(Fea, len_s, Fea_org, Fea_tr, len_s_tr, Fea_org_tr, sigma, sigma
     Y2_org = Fea_org[len_s:, :] # fetch the original sample 2
     # training data
     X1 = Fea_tr[0:len_s_tr, :] # fetch the sample 1 (features of deep networks)
-    Y1 = Fea[len_s_tr:, :] # fetch the sample 2 (features of deep networks)
+    Y1 = Fea_tr[len_s_tr:, :] # fetch the sample 2 (features of deep networks)
     X1_org = Fea_org_tr[0:len_s_tr, :] # fetch the original sample 1
     Y1_org = Fea_org_tr[len_s_tr:, :] # fetch the original sample 2
     L = 1 # generalized Gaussian (if L>1)
@@ -147,40 +147,66 @@ def kernelmatrix(Fea, len_s, Fea_org, Fea_tr, len_s_tr, Fea_org_tr, sigma, sigma
         Kx1y2 = torch.exp(-(Dx1y2 / sigma0))
         Ky1x2 = torch.exp(-(Dy1x2 / sigma0))
         Ky1y2 = torch.exp(-(Dy1y2 / sigma0))
-    return Kx1x2, Kx1y2, Ky1x2, Ky1y2
+    return Kx1x2.detach(), Kx1y2.detach(), Ky1x2.detach(), Ky1y2.detach()
 
 
-def witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level):
+def witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level, permutations=None):
     n1,n2 = Kx1x2.shape[0], Kx1x2.shape[1]
     m1,m2 = Ky1y2.shape[0], Ky1y2.shape[1]
-    #K = torch.tensor(np.block([[np.array(Kx1x2), np.array(Kx1y2)], [np.array(Ky1x2), np.array(Ky1y2)]]))
+    # K = torch.tensor(np.block([[np.array(Kx1x2), np.array(Kx1y2)], [np.array(Ky1x2), np.array(Ky1y2)]]))
     K = torch.cat((torch.cat((Kx1x2, Kx1y2), 1), torch.cat((Ky1x2, Ky1y2), 1)),0)
-    alpha = np.array([1 / n1] * n1 + [-1 / m1] * m1)
+    alpha = torch.tensor([1 / n1] * n1 + [-1 / m1] * m1)
     # use coefficients for witness
     scale = torch.diag(torch.tensor(alpha))
     # still assuming d = 1
-    K = torch.matmul(scale.double(), K.double())
-    witness = torch.sum(K, dim=0)
+    witness = torch.einsum('ij,j -> i', K, alpha)
+    # enforce correct type-I
+    # perm = np.random.permutation(n2 + m2)
+    # witness = witness[perm]
+
     # make it work with the general d case
 
     mu_P = torch.mean(witness[:n2])
     mu_Q = torch.mean(witness[n2:])
-
-    # print(mu_P - mu_Q)
-    Sigma_P = 1 / n2 * (witness[:n2]).dot((witness[:n2])) - mu_P**2
-    Sigma_Q = 1 / m2 * (witness[n2:]).dot((witness[n2:])) - mu_Q**2
+    Sigma_P = torch.var(witness[:n2])
+    Sigma_Q = torch.var(witness[n2:])
     c = n2 / (n2 + m2)
 
     Sigma = Sigma_P / c + Sigma_Q / (1 - c)
-    # print('testing SNR = ', (mu_P - mu_Q) / np.sqrt(Sigma))
-    snr = np.sqrt(n2+m2) * (mu_P - mu_Q) / torch.sqrt(Sigma)
-    threshold = norm.ppf(q=1-level)
-    if snr > threshold:
-        # reject
-        h = 1
+    snr = float(np.sqrt(n2+m2) * (mu_P - mu_Q) / torch.sqrt(Sigma))
+    if permutations==None:
+        threshold = norm.ppf(q=1-level)
+        if snr > threshold:
+            # reject
+            h = 1
+        else:
+            h = 0
+        return h, snr
     else:
-        h = 0
-    return h, snr
+        p = 0
+        for i in range(permutations):
+            perm = np.random.permutation(n2 + m2)
+            witness = witness[perm]
+            mu_P = torch.mean(witness[:n2])
+            mu_Q = torch.mean(witness[n2:])
+
+            # print(mu_P - mu_Q)
+            Sigma_P = torch.var(witness[:n2])
+            Sigma_Q = torch.var(witness[n2:])
+            c = n2 / (n2 + m2)
+
+            Sigma = Sigma_P / c + Sigma_Q / (1 - c)
+            print('simulated SNR', float(np.sqrt(n2 + m2) * (mu_P - mu_Q) / torch.sqrt(Sigma)))
+            if snr <= float(np.sqrt(n2 + m2) * (mu_P - mu_Q) / torch.sqrt(Sigma)):
+                p += float(1/permutations)
+        # print(p)
+        if p < level:
+            h = 1
+        else:
+            h = 0
+        return h, snr
+
+
 
 
 def MMDu_linear_kernel(Fea, len_s, is_var_computed=True, use_1sample_U=True):

@@ -16,6 +16,7 @@ import torch
 from sklearn.utils import check_random_state
 from utils import MatConvert, MMDu, TST_MMD_u, kernelmatrix, witness
 from pathlib import Path
+from tqdm import tqdm
 
 
 def sample_blobs(n, rows=3, cols=3, sep=1, rs=None):
@@ -76,10 +77,10 @@ class ModelLatentF(torch.nn.Module):
         fealant = self.latent(input)
         return fealant
 
-# Setup seeds
-np.random.seed(1102)
-torch.manual_seed(1102)
-torch.cuda.manual_seed(1102)
+# # Setup seeds
+# np.random.seed(1102)
+# torch.manual_seed(1102)
+# torch.cuda.manual_seed(1102)
 torch.backends.cudnn.deterministic = True
 # with GPU this has to be True else False
 is_cuda = False
@@ -88,18 +89,17 @@ dtype = torch.float
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 N_per = 100 # permutation times
 alpha = 0.05 # test threshold
-#n_list = [10,20,40,50,70,80,90,100] # number of samples in per mode
-n_list = [100] # number of samples in per mode
+# n_list = [10,20,40,50,70,80,90,100] # number of samples in per mode
+n_list = [30, 70] # number of samples in per mode
 x_in = 2 # number of neurons in the input layer, i.e., dimension of data
 H = 50 # number of neurons in the hidden layer
 x_out = 50 # number of neurons in the output layer
 learning_rate = 0.0005 # learning rate for MMD-D on Blob
-# N_epoch = 1000 # number of training epochs
-N_epoch = 1 # number of training epochs
-# K = 10 # number of trails
-K = 1
+N_epoch = 1000 # number of training epochs
+# N_epoch = 1 # number of training epochs
+K = 100 # number of trails
 N = 1 # # number of test sets
-N_f = 100.0 # number of test sets (float)
+N_f = 1.0 # number of test sets (float)
 # Generate variance and co-variance matrix of Q
 sigma_mx_2_standard = np.array([[0.03, 0], [0, 0.03]])
 sigma_mx_2 = np.zeros([9,2,2])
@@ -116,9 +116,9 @@ for i in range(9):
         sigma_mx_2[i][0, 1] = 0.02 + 0.002 * (i-5)
 # For each n in n_list, train deep kernel and run two-sample test
 for n in n_list:
-    np.random.seed(1102)
-    torch.manual_seed(1102)
-    torch.cuda.manual_seed(1102)
+    # np.random.seed(1102)
+    # torch.manual_seed(1102)
+    # torch.cuda.manual_seed(1102)
     N1 = 9 * n
     N2 = 9 * n
     Results = np.zeros([2, K])
@@ -128,7 +128,8 @@ for n in n_list:
     s_OPT = np.zeros([K])
     s0_OPT = np.zeros([K])
     # Repeat experiments K times (K = 10) and report average test power (rejection rate)
-    for kk in range(K):
+    pbar = tqdm(range(K))
+    for kk in pbar:
         # Initialize parameters
         if is_cuda:
             model_u = ModelLatentF(x_in, H, x_out).cuda()
@@ -137,16 +138,20 @@ for n in n_list:
         epsilonOPT = MatConvert(np.random.rand(1) * (10 ** (-10)), device, dtype)
         epsilonOPT.requires_grad = True
         sigmaOPT = MatConvert(np.sqrt(np.random.rand(1) * 0.3), device, dtype)
+        # sigmaOPT = MatConvert(np.sqrt(np.random.rand(1) * 3.), device, dtype)
+
         sigmaOPT.requires_grad = True
-        sigma0OPT = MatConvert(np.sqrt(np.random.rand(1) * 0.002), device, dtype)
+
+        # sigma0OPT = MatConvert(np.sqrt(np.random.rand(1) * 0.002), device, dtype)
+        sigma0OPT = MatConvert(np.sqrt(np.random.rand(1) * 0.2), device, dtype)
         sigma0OPT.requires_grad = True
         # Setup optimizer for training deep kernel
         optimizer_u = torch.optim.Adam(list(model_u.parameters())+[epsilonOPT]+[sigmaOPT]+[sigma0OPT], lr=learning_rate) #
         # Generate Blob-D
-        np.random.seed(seed=112 * kk + 1 + n)
-        # s1,s2 = sample_blobs_Q(N1, sigma_mx_2)
+        # np.random.seed(seed=112 * kk + 1 + n)
+        s1,s2 = sample_blobs_Q(N1, sigma_mx_2)
         # REPLACE above line with
-        s1,s2 = sample_blobs(N1)
+        # s1,s2 = sample_blobs(N1)
         # for validating type-I error (s1 ans s2 are from the same distribution)
         if kk==0:
             s1_o = s1
@@ -154,9 +159,9 @@ for n in n_list:
         S = np.concatenate((s1, s2), axis=0)
         S = MatConvert(S, device, dtype)
         # Train deep kernel to maximize test power
-        np.random.seed(seed=1102)
-        torch.manual_seed(1102)
-        torch.cuda.manual_seed(1102)
+        # np.random.seed(seed=1102)
+        # torch.manual_seed(1102)
+        # torch.cuda.manual_seed(1102)
         for t in range(N_epoch):
             # Compute epsilon, sigma and sigma_0
             ep = torch.exp(epsilonOPT)/(1+torch.exp(epsilonOPT))
@@ -165,6 +170,7 @@ for n in n_list:
             # Compute output of the deep network
             modelu_output = model_u(S)
             # Compute J (STAT_u)
+            ep=0
             TEMP = MMDu(modelu_output, N1, S, sigma, sigma0_u, ep)
             mmd_value_temp = -1 * TEMP[0]
             mmd_std_temp = torch.sqrt(TEMP[1]+10**(-8))
@@ -176,15 +182,16 @@ for n in n_list:
             # Update weights using gradient descent
             optimizer_u.step()
             # Print MMD, std of MMD and J
-            if t % 100 == 0:
-                print("mmd_value: ", -1 * mmd_value_temp.item(), "mmd_std: ", mmd_std_temp.item(), "Statistic J: ",
-                      -1 * STAT_u.item())
+            # if t % 100 == 0:
+            # print("mmd_value: ", -1 * mmd_value_temp.item(), "mmd_std: ", mmd_std_temp.item(), "Statistic J: ",
+            #           -1 * STAT_u.item())
+
         h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, alpha, device,
                                                   dtype, ep)
-        ep_OPT[kk] = ep.item()
+        # ep_OPT[kk] = ep.item()
         s_OPT[kk] = sigma.item()
         s0_OPT[kk] = sigma0_u.item()
-        print(ep, epsilonOPT)
+        # print(ep, epsilonOPT)
         # Compute test power of deep kernel based MMD
         H_u = np.zeros(N)
         T_u = np.zeros(N)
@@ -192,14 +199,15 @@ for n in n_list:
         # lists for witness based
         H_wit = np.zeros(N)
         snr_wit = np.zeros(N)
-        np.random.seed(1102)
+        # np.random.seed(1102)
         count_u = 0
+
         for k in range(N):
             # Generate Blob-D
-            np.random.seed(seed=11 * k + 10 + n)
-            # s1test,s2test = sample_blobs_Q(N1, sigma_mx_2)
+            # np.random.seed(seed=11 * k + 10 + n)
+            s1test,s2test = sample_blobs_Q(N1, sigma_mx_2)
             # REPLACE above line with
-            s1test,s2test = sample_blobs(N1)
+            # s1test,s2test = sample_blobs(N1)
             # for validating type-I error (s1 ans s2 are from the same distribution)
             Stest = np.concatenate((s1test, s2test), axis=0)
             Stest = MatConvert(Stest, device, dtype)
@@ -212,25 +220,28 @@ for n in n_list:
             T_u[k] = threshold_u
             M_u[k] = mmd_value_u
             # run the witness based two-sample test
-            Kx1x2, Kx1y2, Ky1x2, Ky1y2 = kernelmatrix(Fea=model_u(Stest), len_s=N1, Fea_org=Stest, Fea_tr=model_u(S),
+            Kx1x2, Kx1y2, Ky1x2, Ky1y2 = kernelmatrix(Fea=model_u(Stest), len_s=N2, Fea_org=Stest, Fea_tr=model_u(S),
                                                       len_s_tr=N1, Fea_org_tr=S, sigma=sigma, sigma0=sigma0_u,
                                                       epsilon=ep, is_smooth=True)
             H_wit[k], snr_wit[k] = witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level=alpha)
         # Print test power of MMD-D
-        print("n =",str(n),"--- Test Power of MMD-D: ", H_u.sum()/N_f)
+        # print("n =",str(n),"--- Test Power of MMD-D: ", H_u.sum()/N_f)
         Results[0, kk] = H_u.sum() / N_f
         # print("n =",str(n),"--- Test Power of MMD-D (K times): ",Results[0])
-        print("n =",str(n),"--- Average Test Power of MMD-D: ",Results[0].sum()/(kk+1))
-
-        print("n =",str(n),"--- Test Power of witness: ", H_wit.sum()/N_f)
+        # print("n =",str(n),"--- Average Test Power of MMD-D: ",Results[0].sum()/(kk+1))
+        #
+        # print("n =",str(n),"--- Test Power of witness: ", H_wit.sum()/N_f)
         Results[1, kk] = H_wit.sum() / N_f
-        print("n =",str(n),"--- Average Test Power of witness: ",Results[1].sum()/(kk+1))
+        # print("n =",str(n),"--- Average Test Power of witness: ",Results[1].sum()/(kk+1))
         # print(snr_wit)
+        pbar.set_description(('n_per = %.0f, ' %n + 'witness: %.4f, ' % (Results[1].sum()/(kk+1))) + "MMD-D: %.4f" %(Results[0].sum()/(kk+1)))
+    print("n =", str(n), "--- Average Test Power of MMD-D: ", Results[0].sum() / K)
+    print("n =", str(n), "--- Average Test Power of witness: ", Results[1].sum() / K)
     #: Default directory containing the results
     DEFAULT_DATA_DIR = Path(__file__).resolve().parent.joinpath("data")
     data_dir = Path(DEFAULT_DATA_DIR)
     data_dir.mkdir(parents=True, exist_ok=True)
-    filename = "results_Blobs{}".format(n)
+    filename = "results_Blobs_10epochs_H1{}".format(n)
     path = data_dir.joinpath(filename)
     # np.save('./Results_Blob_'+str(n)+'_H1_MMD-D',Results)
-    np.save(path,Results)
+    np.save(path, Results)
