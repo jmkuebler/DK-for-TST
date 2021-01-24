@@ -17,6 +17,9 @@ import pickle
 import argparse
 parser = argparse.ArgumentParser()
 from utils_HD import MatConvert, MMDu, TST_MMD_u
+from utils import kernelmatrix, witness
+from tqdm import tqdm
+
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -41,7 +44,7 @@ class ModelLatentF(torch.nn.Module):
         return fealant
 
 # parameters to generate data
-parser.add_argument('--n', type=int, default=1000)
+parser.add_argument('--n', type=int, default=200)
 args = parser.parse_args()
 # Setup seeds
 np.random.seed(1102)
@@ -64,9 +67,9 @@ x_out = 20 # number of neurons in the output layer
 learning_rate = 0.00005
 learning_ratea = 0.001
 learning_rate_C2ST = 0.001
-K = 10 # number of trails
-N = 100 # number of test sets
-N_f = 100.0 # number of test sets (float)
+K = 100 # number of trails
+N = 1 # number of test sets
+N_f = 1.0 # number of test sets (float)
 
 # Load data
 data = pickle.load(open('./HIGGS_TST.pckl', 'rb'))
@@ -87,10 +90,11 @@ J_star_adp = np.zeros([N_epoch])
 ep_OPT = np.zeros([K])
 s_OPT = np.zeros([K])
 s0_OPT = np.zeros([K])
-Results = np.zeros([1,K])
+Results = np.zeros([2,K])
 
 # Repeat experiments K times (K = 10) and report average test power (rejection rate)
-for kk in range(K):
+pbar = tqdm(range(K))
+for kk in pbar:
     torch.manual_seed(kk * 19 + n)
     torch.cuda.manual_seed(kk * 19 + n)
     # Initialize parameters
@@ -152,7 +156,7 @@ for kk in range(K):
                   -1 * STAT_u.item())  # ,"Reg: ", loss1.item()
 
     h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, ep, alpha, device, dtype)
-    print("h:", h_u, "Threshold:", threshold_u, "MMD_value:", mmd_value_u)
+    # print("h:", h_u, "Threshold:", threshold_u, "MMD_value:", mmd_value_u)
     ep_OPT[kk] = ep.item()
     s_OPT[kk] = sigma.item()
     s0_OPT[kk] = sigma0_u.item()
@@ -161,6 +165,9 @@ for kk in range(K):
     H_u = np.zeros(N)
     T_u = np.zeros(N)
     M_u = np.zeros(N)
+    # storage for witness based results
+    H_wit = np.zeros(N)
+    snr_wit = np.zeros(N)
     np.random.seed(1102)
     count_u = 0
     for k in range(N):
@@ -169,23 +176,31 @@ for kk in range(K):
         ind1 = np.random.choice(N1_T, n, replace=False)
         np.random.seed(seed=819 * (k+2) + n)
         ind2 = np.random.choice(N2_T, n, replace=False)
-        s1 = dataX[ind1, :4]
-        s2 = dataY[ind2, :4]
-        S = np.concatenate((s1, s2), axis=0)
-        S = MatConvert(S, device, dtype)
+        s1test = dataX[ind1, :4]
+        s2test = dataY[ind2, :4]
+        Stest = np.concatenate((s1test, s2test), axis=0)
+        Stest = MatConvert(Stest, device, dtype)
 
         # Run two sample test (deep kernel) on generated data
-        h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, ep, alpha, device, dtype)
-
+        h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(Stest), N_per, N1, Stest, sigma, sigma0_u, ep, alpha, device, dtype)
         # Gather results
         count_u = count_u + h_u
-        print("MMD-DK:", count_u)
+        # print("MMD-DK:", count_u)
         H_u[k] = h_u
         T_u[k] = threshold_u
         M_u[k] = mmd_value_u
+
+        # run the witness based two-sample test
+        Kx1x2, Kx1y2, Ky1x2, Ky1y2 = kernelmatrix(Fea=model_u(Stest), len_s=N2, Fea_org=Stest, Fea_tr=model_u(S),
+                                                  len_s_tr=N1, Fea_org_tr=S, sigma=sigma, sigma0=sigma0_u,
+                                                  epsilon=ep, is_smooth=True)
+        H_wit[k], snr_wit[k] = witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level=alpha)
+    pbar.set_description(('n = %.0f, ' %n + 'witness: %.4f, ' % (Results[1].sum()/(kk+1))) + "MMD-D: %.4f" %(Results[0].sum()/(kk+1)))
+
     # Print test power of MMD-D
-    print("Test Power of MMD-D: ", H_u.sum() / N_f)
+    # print("Test Power of MMD-D: ", H_u.sum() / N_f)
     Results[0, kk] = H_u.sum() / N_f
-    print("Test Power of MMD-D (K times): ", Results[0])
-    print("Average Test Power of MMD-D: ", Results[0].sum() / (kk + 1))
+    # Results[1, kk] = H_wit.sum() / N_f
+    # print("Test Power of MMD-D (K times): ", Results[0])
+    # print("Average Test Power of MMD-D: ", Results[0].sum() / (kk + 1))
 np.save('./Results_HIGGS_n' + str(n) + '_H1_MMD-D', Results)
