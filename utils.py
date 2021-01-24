@@ -151,11 +151,12 @@ def kernelmatrix(Fea, len_s, Fea_org, Fea_tr, len_s_tr, Fea_org_tr, sigma, sigma
 
 
 def witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level, permutations=None):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     n1,n2 = Kx1x2.shape[0], Kx1x2.shape[1]
     m1,m2 = Ky1y2.shape[0], Ky1y2.shape[1]
     # K = torch.tensor(np.block([[np.array(Kx1x2), np.array(Kx1y2)], [np.array(Ky1x2), np.array(Ky1y2)]]))
     K = torch.cat((torch.cat((Kx1x2, Kx1y2), 1), torch.cat((Ky1x2, Ky1y2), 1)),0)
-    alpha = torch.tensor([1 / n1] * n1 + [-1 / m1] * m1)
+    alpha = torch.tensor([1 / n1] * n1 + [-1 / m1] * m1).to(device)
     # use coefficients for witness
     scale = torch.diag(torch.tensor(alpha))
     # still assuming d = 1
