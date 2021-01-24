@@ -92,116 +92,117 @@ s_OPT = np.zeros([K])
 s0_OPT = np.zeros([K])
 Results = np.zeros([2,K])
 
-# Repeat experiments K times (K = 10) and report average test power (rejection rate)
-pbar = tqdm(range(K))
-for kk in pbar:
-    torch.manual_seed(kk * 19 + n)
-    torch.cuda.manual_seed(kk * 19 + n)
-    # Initialize parameters
-    if is_cuda:
-        model_u = ModelLatentF(x_in, H, x_out).cuda()
-    else:
-        model_u = ModelLatentF(x_in, H, x_out)
-    epsilonOPT = torch.log(MatConvert(np.random.rand(1) * 10 ** (-10), device, dtype))
-    epsilonOPT.requires_grad = True
-    sigmaOPT = MatConvert(np.ones(1) * np.sqrt(2*d), device, dtype)  # d = 3,5 ??
-    sigmaOPT.requires_grad = True
-    sigma0OPT = MatConvert(np.ones(1) * np.sqrt(0.005), device, dtype)
-    sigma0OPT.requires_grad = False
-    print(epsilonOPT.item())
+n_list = [1000, 2000, 3000, 5000, 8000, 10000]
+for n in range(n_list):
+    pbar = tqdm(range(K))
+    for kk in pbar:
+        torch.manual_seed(kk * 19 + n)
+        torch.cuda.manual_seed(kk * 19 + n)
+        # Initialize parameters
+        if is_cuda:
+            model_u = ModelLatentF(x_in, H, x_out).cuda()
+        else:
+            model_u = ModelLatentF(x_in, H, x_out)
+        epsilonOPT = torch.log(MatConvert(np.random.rand(1) * 10 ** (-10), device, dtype))
+        epsilonOPT.requires_grad = True
+        sigmaOPT = MatConvert(np.ones(1) * np.sqrt(2*d), device, dtype)  # d = 3,5 ??
+        sigmaOPT.requires_grad = True
+        sigma0OPT = MatConvert(np.ones(1) * np.sqrt(0.005), device, dtype)
+        sigma0OPT.requires_grad = False
+        print(epsilonOPT.item())
 
-    # Setup optimizer for training deep kernel
-    optimizer_u = torch.optim.Adam(list(model_u.parameters()) + [epsilonOPT] + [sigmaOPT] + [sigma0OPT], lr=learning_rate)
+        # Setup optimizer for training deep kernel
+        optimizer_u = torch.optim.Adam(list(model_u.parameters()) + [epsilonOPT] + [sigmaOPT] + [sigma0OPT], lr=learning_rate)
 
-    # Generate Higgs (P,Q)
-    N1_T = dataX.shape[0]
-    N2_T = dataY.shape[0]
-    np.random.seed(seed=1102 * kk + n)
-    ind1 = np.random.choice(N1_T, n, replace=False)
-    np.random.seed(seed=819 * kk + n)
-    ind2 = np.random.choice(N2_T, n, replace=False)
-    s1 = dataX[ind1,:4]
-    s2 = dataY[ind2,:4]
-    N1 = n
-    N2 = n
-    S = np.concatenate((s1, s2), axis=0)
-    S = MatConvert(S, device, dtype)
-
-    # Train deep kernel to maximize test power
-    for t in range(N_epoch):
-        # Compute epsilon, sigma and sigma_0
-        ep = torch.exp(epsilonOPT) / (1 + torch.exp(epsilonOPT))  # 10 ** (-10)#
-        sigma = sigmaOPT ** 2
-        sigma0_u = sigma0OPT ** 2
-        # Compute output of the deep network
-        modelu_output = model_u(S)
-        # Compute J (STAT_u)
-        TEMP = MMDu(modelu_output, N1, S, sigma, sigma0_u, ep)
-        mmd_value_temp = -1 * (TEMP[0]+10**(-8))  # 10**(-8)
-        mmd_std_temp = torch.sqrt(TEMP[1]+10**(-8))  # 0.1
-        if mmd_std_temp.item() == 0:
-            print('error!!')
-        if np.isnan(mmd_std_temp.item()):
-            print('error!!')
-        STAT_u = torch.div(mmd_value_temp, mmd_std_temp)
-        J_star_u[t] = STAT_u.item()
-        # Initialize optimizer and Compute gradient
-        optimizer_u.zero_grad()
-        STAT_u.backward(retain_graph=True)
-        # Update weights using gradient descent
-        optimizer_u.step()
-        # Print MMD, std of MMD and J
-        if t % 100 ==0:
-            print("mmd: ", -1 * mmd_value_temp.item(), "mmd_std: ", mmd_std_temp.item(), "Statistic: ",
-                  -1 * STAT_u.item())  # ,"Reg: ", loss1.item()
-
-    h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, ep, alpha, device, dtype)
-    # print("h:", h_u, "Threshold:", threshold_u, "MMD_value:", mmd_value_u)
-    ep_OPT[kk] = ep.item()
-    s_OPT[kk] = sigma.item()
-    s0_OPT[kk] = sigma0_u.item()
-
-    # Compute test power of deep kernel based MMD
-    H_u = np.zeros(N)
-    T_u = np.zeros(N)
-    M_u = np.zeros(N)
-    # storage for witness based results
-    H_wit = np.zeros(N)
-    snr_wit = np.zeros(N)
-    np.random.seed(1102)
-    count_u = 0
-    for k in range(N):
         # Generate Higgs (P,Q)
-        np.random.seed(seed=1102 * (k+1) + n)
+        N1_T = dataX.shape[0]
+        N2_T = dataY.shape[0]
+        np.random.seed(seed=1102 * kk + n)
         ind1 = np.random.choice(N1_T, n, replace=False)
-        np.random.seed(seed=819 * (k+2) + n)
+        np.random.seed(seed=819 * kk + n)
         ind2 = np.random.choice(N2_T, n, replace=False)
-        s1test = dataX[ind1, :4]
-        s2test = dataY[ind2, :4]
-        Stest = np.concatenate((s1test, s2test), axis=0)
-        Stest = MatConvert(Stest, device, dtype)
+        s1 = dataX[ind1,:4]
+        s2 = dataY[ind2,:4]
+        N1 = n
+        N2 = n
+        S = np.concatenate((s1, s2), axis=0)
+        S = MatConvert(S, device, dtype)
 
-        # Run two sample test (deep kernel) on generated data
-        h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(Stest), N_per, N1, Stest, sigma, sigma0_u, ep, alpha, device, dtype)
-        # Gather results
-        count_u = count_u + h_u
-        # print("MMD-DK:", count_u)
-        H_u[k] = h_u
-        T_u[k] = threshold_u
-        M_u[k] = mmd_value_u
+        # Train deep kernel to maximize test power
+        for t in range(N_epoch):
+            # Compute epsilon, sigma and sigma_0
+            ep = torch.exp(epsilonOPT) / (1 + torch.exp(epsilonOPT))  # 10 ** (-10)#
+            sigma = sigmaOPT ** 2
+            sigma0_u = sigma0OPT ** 2
+            # Compute output of the deep network
+            modelu_output = model_u(S)
+            # Compute J (STAT_u)
+            TEMP = MMDu(modelu_output, N1, S, sigma, sigma0_u, ep)
+            mmd_value_temp = -1 * (TEMP[0]+10**(-8))  # 10**(-8)
+            mmd_std_temp = torch.sqrt(TEMP[1]+10**(-8))  # 0.1
+            if mmd_std_temp.item() == 0:
+                print('error!!')
+            if np.isnan(mmd_std_temp.item()):
+                print('error!!')
+            STAT_u = torch.div(mmd_value_temp, mmd_std_temp)
+            J_star_u[t] = STAT_u.item()
+            # Initialize optimizer and Compute gradient
+            optimizer_u.zero_grad()
+            STAT_u.backward(retain_graph=True)
+            # Update weights using gradient descent
+            optimizer_u.step()
+            # Print MMD, std of MMD and J
+            if t % 100 ==0:
+                print("mmd: ", -1 * mmd_value_temp.item(), "mmd_std: ", mmd_std_temp.item(), "Statistic: ",
+                      -1 * STAT_u.item())  # ,"Reg: ", loss1.item()
 
-        # run the witness based two-sample test
-        Kx1x2, Kx1y2, Ky1x2, Ky1y2 = kernelmatrix(Fea=model_u(Stest), len_s=N2, Fea_org=Stest, Fea_tr=model_u(S),
-                                                  len_s_tr=N1, Fea_org_tr=S, sigma=sigma, sigma0=sigma0_u,
-                                                  epsilon=ep, is_smooth=True)
-        H_wit[k], snr_wit[k] = witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level=alpha)
-    pbar.set_description(('n = %.0f, ' %n + 'witness: %.4f, ' % (Results[1].sum()/(kk+1))) + "MMD-D: %.4f" %(Results[0].sum()/(kk+1)))
+        h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, ep, alpha, device, dtype)
+        # print("h:", h_u, "Threshold:", threshold_u, "MMD_value:", mmd_value_u)
+        ep_OPT[kk] = ep.item()
+        s_OPT[kk] = sigma.item()
+        s0_OPT[kk] = sigma0_u.item()
 
-    # Print test power of MMD-D
-    # print("Test Power of MMD-D: ", H_u.sum() / N_f)
-    Results[0, kk] = H_u.sum() / N_f
-    Results[1, kk] = H_wit.sum() / N_f
-    # Results[1, kk] = H_wit.sum() / N_f
-    # print("Test Power of MMD-D (K times): ", Results[0])
-    # print("Average Test Power of MMD-D: ", Results[0].sum() / (kk + 1))
-np.save('./data/Results_HIGGS_n' + str(n) + '_H1_MMD-D', Results)
+        # Compute test power of deep kernel based MMD
+        H_u = np.zeros(N)
+        T_u = np.zeros(N)
+        M_u = np.zeros(N)
+        # storage for witness based results
+        H_wit = np.zeros(N)
+        snr_wit = np.zeros(N)
+        np.random.seed(1102)
+        count_u = 0
+        for k in range(N):
+            # Generate Higgs (P,Q)
+            np.random.seed(seed=1102 * (k+1) + n)
+            ind1 = np.random.choice(N1_T, n, replace=False)
+            np.random.seed(seed=819 * (k+2) + n)
+            ind2 = np.random.choice(N2_T, n, replace=False)
+            s1test = dataX[ind1, :4]
+            s2test = dataY[ind2, :4]
+            Stest = np.concatenate((s1test, s2test), axis=0)
+            Stest = MatConvert(Stest, device, dtype)
+
+            # Run two sample test (deep kernel) on generated data
+            h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(Stest), N_per, N1, Stest, sigma, sigma0_u, ep, alpha, device, dtype)
+            # Gather results
+            count_u = count_u + h_u
+            # print("MMD-DK:", count_u)
+            H_u[k] = h_u
+            T_u[k] = threshold_u
+            M_u[k] = mmd_value_u
+
+            # run the witness based two-sample test
+            Kx1x2, Kx1y2, Ky1x2, Ky1y2 = kernelmatrix(Fea=model_u(Stest), len_s=N2, Fea_org=Stest, Fea_tr=model_u(S),
+                                                      len_s_tr=N1, Fea_org_tr=S, sigma=sigma, sigma0=sigma0_u,
+                                                      epsilon=ep, is_smooth=True)
+            H_wit[k], snr_wit[k] = witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level=alpha)
+        pbar.set_description(('n = %.0f, ' %n + 'witness: %.4f, ' % (Results[1].sum()/(kk+1))) + "MMD-D: %.4f" %(Results[0].sum()/(kk+1)))
+
+        # Print test power of MMD-D
+        # print("Test Power of MMD-D: ", H_u.sum() / N_f)
+        Results[0, kk] = H_u.sum() / N_f
+        Results[1, kk] = H_wit.sum() / N_f
+        # Results[1, kk] = H_wit.sum() / N_f
+        # print("Test Power of MMD-D (K times): ", Results[0])
+        # print("Average Test Power of MMD-D: ", Results[0].sum() / (kk + 1))
+    np.save('./data/Results_HIGGS_n' + str(n) + '_H1_MMD-D', Results)
