@@ -16,6 +16,7 @@ can be found in https://www.anaconda.com/distribution/#download-section .
 """
 import numpy as np
 import torch
+from tqdm import tqdm
 from sklearn.utils import check_random_state
 from utils import MatConvert, Pdist2, MMDu, TST_LCE, TST_MMD_adaptive_bandwidth, TST_ME, TST_SCF, TST_C2ST, C2ST_NN_fit
 
@@ -91,7 +92,7 @@ dtype = torch.float
 device = torch.device("cuda:0")
 N_per = 100 # permutation times
 alpha = 0.05 # test threshold
-n_list = [10,20,40,50,70,80,90,100] # number of samples in per mode
+n_list = [10,20,30,40,50] # number of samples in per mode
 x_in = 2 # number of neurons in the input layer, i.e., dimension of data
 H = 50 # number of neurons in the hidden layer
 x_out = 50 # number of neurons in the output layer
@@ -126,7 +127,8 @@ for n in n_list:
     batch_size = min(n * 2, 128) # batch size for C2ST-S and C2ST-L
     N_epoch_C2ST = int(500 * 18 * n / batch_size)
     # Repeat experiments K times (K = 10) and report average test power (rejection rate)
-    for kk in range(K):
+    pbar = tqdm(range(K))
+    for kk in pbar:
         # Generate Blob-D
         np.random.seed(seed=112 * kk + 1 + n)
         s1, s2 = sample_blobs_Q(N1, sigma_mx_2)
@@ -180,13 +182,13 @@ for n in n_list:
         np.random.seed(seed=1102)
         test_locs_ME, gwidth_ME = TST_ME(S, N1, alpha, is_train=True, test_locs=1, gwidth=1, J=5, seed=15)
         h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=5, seed=15)
-        print("h:", h_ME, "test_locs_ME:", test_locs_ME, "gwidth_ME:", gwidth_ME)
+        # print("h:", h_ME, "test_locs_ME:", test_locs_ME, "gwidth_ME:", gwidth_ME)
 
         # Train SCF
         np.random.seed(seed=1102)
         test_freqs_SCF, gwidth_SCF = TST_SCF(S, N1, alpha, is_train=True, test_freqs=1, gwidth=1, J=5, seed=15)
         h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=5, seed=15)
-        print("h:", h_SCF, "test_freqs_SCF:", test_freqs_SCF, "gwidth_SCF:", gwidth_SCF)
+        # print("h:", h_SCF, "test_freqs_SCF:", test_freqs_SCF, "gwidth_SCF:", gwidth_SCF)
 
         # Compute test power of baselines
         H_adaptive = np.zeros(N)
@@ -235,24 +237,27 @@ for n in n_list:
             count_SCF = count_SCF + h_SCF
             count_C2ST_S = count_C2ST_S + int(H_C2ST_S[k])
             count_C2ST_L = count_C2ST_L + int(H_C2ST_L[k])
-            print("MMD-O:", count_adp,"C2ST-L:", count_C2ST_L,"C2ST-S:", count_C2ST_S,"ME:", count_ME, "SCF:", count_SCF)
+            # print("MMD-O:", count_adp,"C2ST-L:", count_C2ST_L,"C2ST-S:", count_C2ST_S,"ME:", count_ME, "SCF:", count_SCF)
             H_adaptive[k] = h_adaptive
             T_adaptive[k] = threshold_adaptive
             M_adaptive[k] = mmd_value_adaptive
             H_ME[k] = h_ME
             H_SCF[k] = h_SCF
-        print("Test Power of MMD-O: ", H_adaptive.sum() / N_f, "Test Power of C2ST-L: ", H_C2ST_L.sum() / N_f,
-              "Test Power of C2ST-S: ", H_C2ST_S.sum() / N_f, "Test Power of ME:", H_ME.sum() / N_f,
-              "Test Power of SCF: ", H_SCF.sum() / N_f)
+        # print("Test Power of MMD-O: ", H_adaptive.sum() / N_f, "Test Power of C2ST-L: ", H_C2ST_L.sum() / N_f,
+        #       "Test Power of C2ST-S: ", H_C2ST_S.sum() / N_f, "Test Power of ME:", H_ME.sum() / N_f,
+        #       "Test Power of SCF: ", H_SCF.sum() / N_f)
         Results[0, kk] = H_adaptive.sum() / N_f
         Results[1, kk] = H_C2ST_L.sum() / N_f
         Results[2, kk] = H_C2ST_S.sum() / N_f
         Results[3, kk] = H_ME.sum() / N_f
         Results[4, kk] = H_SCF.sum() / N_f
-        print("n =",str(n),"--- Test Power of Baselines (K times): ")
-        print(Results)
-        print("n =", str(n), "--- Average Test Power of Baselines (K times): ")
-        print("MMD-O: ", (Results.sum(1) / (kk+1))[0], "C2ST-L: ", (Results.sum(1) / (kk+1))[1],
-              "C2ST-S: ", (Results.sum(1) / (kk+1))[2], "ME:", (Results.sum(1) / (kk+1))[3],
-              "SCF: ", (Results.sum(1) / (kk+1))[4])
+        pbar.set_description(('n = %.0f, ' %n + 'MMD-O: %.4f, ' % (Results[0].sum()/(kk+1))) + "C2ST_L: %.4f" %(Results[1].sum()/(kk+1)) +
+                             "C2ST_S: %.4f" %(Results[2].sum()/(kk+1)) + "ME: %.4f" %(Results[3].sum()/(kk+1)) +
+                             "SCF: %.4f" %(Results[4].sum()/(kk+1)))
+        # print("n =",str(n),"--- Test Power of Baselines (K times): ")
+        # print(Results)
+        # print("n =", str(n), "--- Average Test Power of Baselines (K times): ")
+        # print("MMD-O: ", (Results.sum(1) / (kk+1))[0], "C2ST-L: ", (Results.sum(1) / (kk+1))[1],
+        #       "C2ST-S: ", (Results.sum(1) / (kk+1))[2], "ME:", (Results.sum(1) / (kk+1))[3],
+        #       "SCF: ", (Results.sum(1) / (kk+1))[4])
     np.save('./Results_Blob_' + str(n) + '_H1_Baselines', Results)

@@ -97,9 +97,9 @@ x_out = 50 # number of neurons in the output layer
 learning_rate = 0.0005 # learning rate for MMD-D on Blob
 N_epoch = 1000 # number of training epochs
 # N_epoch = 1 # number of training epochs
-K = 100 # number of trails
-N = 1 # # number of test sets
-N_f = 1.0 # number of test sets (float)
+K = 10 # number of trails
+N = 100 # # number of test sets
+N_f = 100.0 # number of test sets (float)
 # Generate variance and co-variance matrix of Q
 sigma_mx_2_standard = np.array([[0.03, 0], [0, 0.03]])
 sigma_mx_2 = np.zeros([9,2,2])
@@ -149,9 +149,9 @@ for n in n_list:
         optimizer_u = torch.optim.Adam(list(model_u.parameters())+[epsilonOPT]+[sigmaOPT]+[sigma0OPT], lr=learning_rate) #
         # Generate Blob-D
         # np.random.seed(seed=112 * kk + 1 + n)
-        # s1,s2 = sample_blobs_Q(N1, sigma_mx_2)
+        s1,s2 = sample_blobs_Q(N1, sigma_mx_2)
         # REPLACE above line with
-        s1,s2 = sample_blobs(N1)
+        # s1,s2 = sample_blobs(N1)
         # for validating type-I error (s1 ans s2 are from the same distribution)
         if kk==0:
             s1_o = s1
@@ -205,9 +205,9 @@ for n in n_list:
         for k in range(N):
             # Generate Blob-D
             # np.random.seed(seed=11 * k + 10 + n)
-            # s1test,s2test = sample_blobs_Q(N1, sigma_mx_2)
+            s1test,s2test = sample_blobs_Q(N1, sigma_mx_2)
             # REPLACE above line with
-            s1test,s2test = sample_blobs(N1)
+            # s1test,s2test = sample_blobs(N1)
             # for validating type-I error (s1 ans s2 are from the same distribution)
             Stest = np.concatenate((s1test, s2test), axis=0)
             Stest = MatConvert(Stest, device, dtype)
@@ -235,13 +235,13 @@ for n in n_list:
         # print("n =",str(n),"--- Average Test Power of witness: ",Results[1].sum()/(kk+1))
         # print(snr_wit)
         pbar.set_description(('n_per = %.0f, ' %n + 'witness: %.4f, ' % (Results[1].sum()/(kk+1))) + "MMD-D: %.4f" %(Results[0].sum()/(kk+1)))
-    print("n =", str(n), "--- Average Test Power of MMD-D: ", Results[0].sum() / K)
-    print("n =", str(n), "--- Average Test Power of witness: ", Results[1].sum() / K)
+    # print("n =", str(n), "--- Average Test Power of MMD-D: ", Results[0].sum() / K)
+    # print("n =", str(n), "--- Average Test Power of witness: ", Results[1].sum() / K)
     #: Default directory containing the results
     DEFAULT_DATA_DIR = Path(__file__).resolve().parent.joinpath("data")
     data_dir = Path(DEFAULT_DATA_DIR)
     data_dir.mkdir(parents=True, exist_ok=True)
-    filename = "results_Blobs_10epochs_H0{}".format(n)
+    filename = "results_Blobs_10x100_H1{}".format(n)
     path = data_dir.joinpath(filename)
     # np.save('./Results_Blob_'+str(n)+'_H0_MMD-D',Results)
     np.save(path, Results)
