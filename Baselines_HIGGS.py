@@ -17,7 +17,7 @@ can be found in https://www.anaconda.com/distribution/#download-section .
 import numpy as np
 import torch
 import pickle
-import tqdm
+from tqdm import tqdm
 import argparse
 parser = argparse.ArgumentParser()
 from utils_HD import MatConvert, MMDu, TST_MMD_adaptive_bandwidth, TST_LCE, TST_ME, TST_SCF, TST_C2ST, C2ST_NN_fit
