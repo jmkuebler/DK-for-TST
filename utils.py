@@ -158,14 +158,7 @@ def witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level, permutations=None):
     K = torch.cat((torch.cat((Kx1x2, Kx1y2), 1), torch.cat((Ky1x2, Ky1y2), 1)),0)
     alpha = torch.tensor([1 / n1] * n1 + [-1 / m1] * m1).to(device)
     # use coefficients for witness
-    scale = torch.diag(torch.tensor(alpha))
-    # still assuming d = 1
-    witness = torch.einsum('ij,j -> i', K, alpha)
-    # enforce correct type-I
-    # perm = np.random.permutation(n2 + m2)
-    # witness = witness[perm]
-
-    # make it work with the general d case
+    witness = torch.einsum('ij,i -> j', K, alpha)
 
     mu_P = torch.mean(witness[:n2])
     mu_Q = torch.mean(witness[n2:])
@@ -197,9 +190,10 @@ def witness(Kx1x2, Kx1y2, Ky1x2, Ky1y2, level, permutations=None):
             c = n2 / (n2 + m2)
 
             Sigma = Sigma_P / c + Sigma_Q / (1 - c)
-            print('simulated SNR', float(np.sqrt(n2 + m2) * (mu_P - mu_Q) / torch.sqrt(Sigma)))
+            # print('simulated SNR', float(np.sqrt(n2 + m2) * (mu_P - mu_Q) / torch.sqrt(Sigma)))
             if snr <= float(np.sqrt(n2 + m2) * (mu_P - mu_Q) / torch.sqrt(Sigma)):
                 p += float(1/permutations)
+        # print("p permutations", p)
         # print(p)
         if p < level:
             h = 1
