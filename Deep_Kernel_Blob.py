@@ -90,7 +90,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 N_per = 100 # permutation times
 alpha = 0.05 # test threshold
 # n_list = [10,20,40,50,70,80,90,100] # number of samples in per mode
-n_list = [30, 70] # number of samples in per mode
+n_list = [10, 20, 30, 40, 50, 60, 70] # number of samples in per mode
 x_in = 2 # number of neurons in the input layer, i.e., dimension of data
 H = 50 # number of neurons in the hidden layer
 x_out = 50 # number of neurons in the output layer
@@ -149,9 +149,9 @@ for n in n_list:
         optimizer_u = torch.optim.Adam(list(model_u.parameters())+[epsilonOPT]+[sigmaOPT]+[sigma0OPT], lr=learning_rate) #
         # Generate Blob-D
         # np.random.seed(seed=112 * kk + 1 + n)
-        s1,s2 = sample_blobs_Q(N1, sigma_mx_2)
+        # s1,s2 = sample_blobs_Q(N1, sigma_mx_2)
         # REPLACE above line with
-        # s1,s2 = sample_blobs(N1)
+        s1,s2 = sample_blobs(N1)
         # for validating type-I error (s1 ans s2 are from the same distribution)
         if kk==0:
             s1_o = s1
@@ -205,9 +205,9 @@ for n in n_list:
         for k in range(N):
             # Generate Blob-D
             # np.random.seed(seed=11 * k + 10 + n)
-            s1test,s2test = sample_blobs_Q(N1, sigma_mx_2)
+            # s1test,s2test = sample_blobs_Q(N1, sigma_mx_2)
             # REPLACE above line with
-            # s1test,s2test = sample_blobs(N1)
+            s1test,s2test = sample_blobs(N1)
             # for validating type-I error (s1 ans s2 are from the same distribution)
             Stest = np.concatenate((s1test, s2test), axis=0)
             Stest = MatConvert(Stest, device, dtype)
@@ -241,7 +241,7 @@ for n in n_list:
     DEFAULT_DATA_DIR = Path(__file__).resolve().parent.joinpath("data")
     data_dir = Path(DEFAULT_DATA_DIR)
     data_dir.mkdir(parents=True, exist_ok=True)
-    filename = "results_Blobs_10epochs_H1{}".format(n)
+    filename = "results_Blobs_10epochs_H0{}".format(n)
     path = data_dir.joinpath(filename)
-    # np.save('./Results_Blob_'+str(n)+'_H1_MMD-D',Results)
+    # np.save('./Results_Blob_'+str(n)+'_H0_MMD-D',Results)
     np.save(path, Results)

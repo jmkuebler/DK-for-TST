@@ -68,8 +68,8 @@ learning_rate = 0.00005
 learning_ratea = 0.001
 learning_rate_C2ST = 0.001
 K = 100 # number of trails
-N = 1 # number of test sets
-N_f = 1.0 # number of test sets (float)
+N = 10 # number of test sets
+N_f = 10.0 # number of test sets (float)
 
 # Load data
 data = pickle.load(open('./HIGGS_TST.pckl', 'rb'))
@@ -93,7 +93,8 @@ s0_OPT = np.zeros([K])
 Results = np.zeros([2,K])
 
 n_list = [1000, 2000, 3000, 5000, 8000, 10000]
-for n in range(n_list):
+for n in n_list:
+    Results = np.zeros([2,K])
     pbar = tqdm(range(K))
     for kk in pbar:
         torch.manual_seed(kk * 19 + n)
@@ -205,4 +206,4 @@ for n in range(n_list):
         # Results[1, kk] = H_wit.sum() / N_f
         # print("Test Power of MMD-D (K times): ", Results[0])
         # print("Average Test Power of MMD-D: ", Results[0].sum() / (kk + 1))
-    np.save('./data/Results_HIGGS_n' + str(n) + '_H1_MMD-D', Results)
+    np.save('./data/Results_100times10_HIGGS_n' + str(n) + '_H1_MMD-D', Results)
